@@ -25,7 +25,7 @@ public class Buyki : MonoBehaviour
                 oneBuy.name = "Buy_" + (int)curX + "_" + (int)curZ;
                 oneBuy.transform.localPosition = new Vector3(curX, 0, curZ);
                 curZ += interval;
-                print(curX+","+ curZ);
+                //print(curX+","+ curZ);
             }
             curX += interval;
         }

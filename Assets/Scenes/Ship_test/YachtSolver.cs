@@ -6,7 +6,7 @@ using System;
 
 // Движение МПО в гор плоск (1)
 // Лукомский Чугунов Системы управления МПО (2)
-// 
+// Гофман Маневрирование судна (3)
 
 public class YachtSolver : MonoBehaviour
 {
@@ -26,6 +26,8 @@ public class YachtSolver : MonoBehaviour
     public float K11 = 0.3f;                // коеф. для расчета массы с учетом присоединенной Mzz = (1+K11)*M0
     public float K66 = 0.5f;                // коеф. для расчета массы и момента с учетом прис.  Jyy = (1+K66)*Jy; Mxx = (1+K66)*M0
     public float Krud = 0.19f;              // = 0.5*p*Sруля; Тогда сила на руле curFrud = Krud*V*V*KoefRud(curBeta,ruderlValue)
+    public float KFrudX = 0.5f;             // Подгонка, для реализма эффективности руля
+    public float KBeta = 0.5f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
 
     // рассчитывается один раз
     private float _KresZ;                   // коэффициент перед V*V при рассчете силы сопротивления по Z
@@ -40,8 +42,8 @@ public class YachtSolver : MonoBehaviour
     public float FresZ;                     // сила сопротивления корпуса продольная
     public float FresX;                     // сила сопротивления корпуса поперечная
     public float Frud;                      // сила на руле  Krud * V*V  * KoefRud( Beta, ruderlValue )
-    public float FrudZ;                     // доп. сила сопротивления из-за поворота руля = - Frud*sin( abs(ruderlValue) )
-    public float FrudX;                     // боковая сила из-за поворота руля = Frud*Cos(ruderlValue);
+    public float FrudZ;                     // доп. сила сопротивления из-за поворота руля 
+    public float FrudX;                     // боковая сила из-за поворота руля 
     public float Mrud;                      // Момент возникающий на руле
     public float MresBody;                  // Момент сил сопротивления воды
     public float Meng;                      // Момент от винта
@@ -83,7 +85,7 @@ public class YachtSolver : MonoBehaviour
 
         // силы и моменты на руле
         FrudZ = -Mathf.Sign(Vz) * FruderZ(ruderlValue + Beta, Vz);
-        FrudX = -Mathf.Sign(ruderlValue + Beta) * FruderX(ruderlValue + Beta, Vz);
+        FrudX = -Mathf.Sign(ruderlValue + Beta) * Mathf.Sign(Vz) * FruderX(ruderlValue + Beta, Vz);
         Mrud =  -FrudX * Lbody / 2;
 
         // Момент - сопротивление вращательному движению. Не по (1), а из физических соображений
@@ -134,74 +136,39 @@ public class YachtSolver : MonoBehaviour
         {
             Beta = Mathf.Atan(Vx / Vz) *180/Mathf.PI;
         }
+        Beta *= KBeta;
         //Beta = 0;
-       
-        print("");
-        print("Vz = " + Vz + "   Vx = " + Vx);
-        print("Beta = "+Beta + "   ruder = "+ ruderlValue + "   ruder + Beta = " + (ruderlValue + Beta) );
-        
-        
+        /*
+         print("");
+         print("Vz = " + Vz + "   Vx = " + Vx);
+         print("Beta = "+Beta + "   ruder = "+ ruderlValue + "   ruder + Beta = " + (ruderlValue + Beta) );
+         */
+
     }
 
     // сила сопротивления руля по оси Z
     private float FruderZ(float ang, float V)
     {
-        float[] angles = { 0, 4, 8, 12, 16, 18, 35 };
-        float[] forces = { 10, 18, 23, 38, 75, 110, 600 };
+        float VV = 2.37f;           // если скорость 1,54 то V*V = 2,37
+        float Fv3;                  // сила при скорости 3 узла 
 
-        return RuderAbsForce(ang, V, angles, forces);
+        ang = Mathf.Abs(ang);
+        Fv3 = 12.3f + ang * (-0.311f+ang*(0.103f + ang*0.011f));
+
+        return Fv3 / VV * V * V;
     }
 
     // сила сопротивления руля по оси X, порождает боковую скорость и момент вращения
     private float FruderX(float ang, float V)
     {
-        float[] angles = { 0, 4, 8, 12, 16, 18, 35 };
-        float[] forces = { 0, 180, 320, 410, 415, 400, 200 };
-
-        return RuderAbsForce( ang,  V, angles, forces)/2;   // Деление на 2 - подгонка, чтобы уменьшить эффективность руля
-    }
-
-    private float RuderAbsForce(float ang, float V, float[] angles, float[] forces)
-    {
-        float Fv3 = 0;              // сила при скорости 3 узла 
         float VV = 2.37f;           // если скорость 1,54 то V*V = 2,37
-        int idx1, idx2;
+        float Fv3;                  // сила при скорости 3 узла 
 
         ang = Mathf.Abs(ang);
-       
-        if (ang == angles[0])
-        {
-            Fv3 = forces[0];
-        }
-        else if ( ang >= angles[angles.Length - 1] )
-        {
-            Fv3 = forces[forces.Length - 1];
-        }
-        else
-        {
-            idx1 = idx2 = -1;      // подстраховка
-            for (int i = 1; i < angles.Length; i++)
-            {
-                if (angles[i] >= ang)
-                {
-                    idx1 = i - 1;
-                    idx2 = i;
-                    break;
-                }
-            }
-            if (idx1 == -1)
-            {
-                Fv3 = forces[0];
-                print("Неправильно определяется диапазон для силы Fruder");
-            }
-            else
-            {
-                Fv3 = forces[idx1] + (forces[idx2] - forces[idx1]) * (ang- angles[idx1]) / (angles[idx2] - angles[idx1]);
-            }
-        }
-        //print("ang = " + ang + "Frud = " + Fv3 / VV * V * V );
-        return Fv3 / VV * V * V;
+        Fv3 = ang * (59.88f + ang * (-2.57f + ang * 0.029f) );
 
+        return Fv3 / VV * V * V * KFrudX; // KFrudX - подгонка, чтобы уменьшить эффективность руля
     }
+
 
 }
