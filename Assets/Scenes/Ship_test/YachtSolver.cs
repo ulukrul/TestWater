@@ -29,6 +29,11 @@ public class YachtSolver : MonoBehaviour
     public float KFrudX = 0.5f;             // Подгонка, для реализма эффективности руля
     public float KBeta = 0.5f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
 
+    // занос
+    public int DirectV = 1;                 // направление вращения, +1 - правый винт, -1 - левый;
+    public float Kzanos = 3;                // подбором, влияет на силу заноса кормы
+    public float Tzanos = 1.5f;             // подбором, влияет на время (обратно) действия силы заноса после увеличения мощности 
+
     // рассчитывается один раз
     private float _KresZ;                   // коэффициент перед V*V при рассчете силы сопротивления по Z
     private float _KresX;                   // коэффициент перед V*V при рассчете силы сопротивления по X
@@ -46,7 +51,8 @@ public class YachtSolver : MonoBehaviour
     public float FrudX;                     // боковая сила из-за поворота руля 
     public float Mrud;                      // Момент возникающий на руле
     public float MresBody;                  // Момент сил сопротивления воды
-    public float Meng;                      // Момент от винта
+    public float FengX;                     // боковая сила от винта, возникает при изменениях мощности
+    public float MengX;                     // Момент от винта
     public float Vz = 0;                    // текущая продольная скорость
     public float Vx = 0;                    // боковая скорость
     public float OmegaY = 0;                // скорость поворота вокруг вертикальной оси
@@ -76,7 +82,9 @@ public class YachtSolver : MonoBehaviour
     void FixedUpdate()
     {
         float dt = Time.fixedDeltaTime;
+
         // сила тяги
+        float FengOld = Feng; // для анализа, нужен ли занос кормы
         Feng = enginePower * engineValue / maxV; 
         
         // сила сопротивления корпуса
@@ -92,6 +100,11 @@ public class YachtSolver : MonoBehaviour
         MresBody = -Mathf.Sign(OmegaY) *_KresX * (OmegaY * Lbody)* (OmegaY * Lbody) / 8;
         //MresBody = _Mzz * OmegaY;
 
+        // сила и момент от увеличения мощности двигателя
+        float impactX = detectEngineImpact(FengOld, Feng);
+        float dFengX = dt * (Kzanos * impactX - Tzanos * FengX);    // спадающая экспонента
+        FengX += dFengX;
+        MengX = -FengX * Lbody / 2;
 
         // Интегрируем dVz/dt - продольная скорость по Z
         float rotToVz = _Mxx * OmegaY * Vx;
@@ -99,11 +112,11 @@ public class YachtSolver : MonoBehaviour
 
         // Интегрируем dVx/dt - боковая скорость по X
         float rotToVx = -_Mzz * OmegaY * Vz;
-        float dVx = dt * (FrudX + FresX + rotToVx) / _Mxx;
+        float dVx = dt * (FrudX + FresX + FengX + rotToVx) / _Mxx;
         //print("FrudX = " + FrudX + "   FresX = " + FresX + "   rotToVy = " + rotToVx + "   dVx = "+ dVx + "   Vx = "+Vx);
 
         // Интегрируем dOmegaY/dt - момент вокруг вертикальной оси Y
-        float dOmegaY = dt * (Mrud + MresBody + (_Mzz - _Mxx) * Vx * Vz) / _Jyy;
+        float dOmegaY = dt * (Mrud + MresBody + MengX + (_Mzz - _Mxx) * Vx * Vz) / _Jyy;
 
         // Новые скорости
         Vz += dVz;
@@ -168,6 +181,29 @@ public class YachtSolver : MonoBehaviour
         Fv3 = ang * (59.88f + ang * (-2.57f + ang * 0.029f) );
 
         return Fv3 / VV * V * V * KFrudX; // KFrudX - подгонка, чтобы уменьшить эффективность руля
+    }
+
+    // боковая сила приложеная к корме из-за увеличения мощности двигателя
+    // TODO! не все ситуации рассмотрены!
+    private float detectEngineImpact( float FengOld, float Feng)
+    {
+        float impact = 0;
+        if (FengOld >= 0 && FengOld < Feng)     // мощность увеличили
+        {
+            if (Vz >= 0)                        // стоим или плывем вперед
+            {
+                impact = Kzanos * ( Feng - FengOld );
+            }
+        }
+        if (FengOld <= 0 && FengOld > Feng)     // увеличили мощность назад
+        {
+            if (Vz <= 0)                        // стоим или движемся назад
+            {
+                impact = Kzanos * (Feng - FengOld);
+            }
+        }
+        // учтем направление вращения винта
+        return impact*DirectV;
     }
 
 

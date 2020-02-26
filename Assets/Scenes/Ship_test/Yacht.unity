@@ -533,8 +533,13 @@ MonoBehaviour:
   M0: 8680
   Jy: 35000
   K11: 0.3
-  K66: 0.3
+  K66: 0.5
   Krud: 0.19
+  KFrudX: 0.5
+  KBeta: 0.5
+  DirectV: 1
+  Kzanos: 3
+  Tzanos: 1.5
   Feng: 0
   FresZ: 0
   FresX: 0
@@ -543,7 +548,8 @@ MonoBehaviour:
   FrudX: 0
   Mrud: 0
   MresBody: 0
-  Meng: 0
+  FengX: 0
+  MengX: 0
   Vz: 0
   Vx: 0
   OmegaY: 0
