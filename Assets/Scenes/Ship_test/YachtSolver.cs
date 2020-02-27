@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Xml.Schema;
 using UnityEngine;
+using UnityEngine.UI;
 using System;
+using System.Globalization;
 
 // Движение МПО в гор плоск (1)
 // Лукомский Чугунов Системы управления МПО (2)
@@ -14,7 +16,7 @@ public class YachtSolver : MonoBehaviour
     [Range(-1.0f,1.0f)]
     public float engineValue = 0;           // -1..+1, для получения текущей мощности умножается на enginePower
     [Range(-35.0f, 35.0f)]
-    public float ruderlValue = 0;           // угол поворота пера руля
+    public float rudderValue = 0;           // угол поворота пера руля
 
     [Header("Разные исходные данные:")]
     public float enginePower = 30000f;      // 40 л.с примерно 30 КВт
@@ -25,7 +27,7 @@ public class YachtSolver : MonoBehaviour
     public float Jy = 35000f;               // момент инерции относительно вертикальной оси
     public float K11 = 0.3f;                // коеф. для расчета массы с учетом присоединенной Mzz = (1+K11)*M0
     public float K66 = 0.5f;                // коеф. для расчета массы и момента с учетом прис.  Jyy = (1+K66)*Jy; Mxx = (1+K66)*M0
-    public float Krud = 0.19f;              // = 0.5*p*Sруля; Тогда сила на руле curFrud = Krud*V*V*KoefRud(curBeta,ruderlValue)
+    public float Krud = 0.19f;              // = 0.5*p*Sруля; Тогда сила на руле curFrud = Krud*V*V*KoefRud(curBeta,ruderValue)
     public float KFrudX = 0.3f;             // Подгонка, для реализма эффективности руля
     public float KBeta = 1.0f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
 
@@ -62,6 +64,14 @@ public class YachtSolver : MonoBehaviour
     public float OmegaY = 0;                // скорость поворота вокруг вертикальной оси
     public float Beta = 0;                  // угол между локальной осью OZ и скоростью
 
+
+    // Объекты сцены
+    Transform _HelmWheel;                   // Штурвал
+    Transform _ThrottleLever;               // Ручка газ-реверс
+    Text _SpeedText;                        // Дисплей - скорость
+    Text _RudderAngleText;                   // Дислей - положение руля
+    Text _TrackAngleText;                    // Дисплей - курсовой угол
+
     void Start()
     {
         // рассчет коэффициента перед силой сопротивления в ур. динамики (1-8)
@@ -71,16 +81,47 @@ public class YachtSolver : MonoBehaviour
         _Mzz = (1 + K11) * M0;
         _Mxx = (1 + K66) * M0;
         _Jyy = (1 + K66) * Jy;
+
+        // Объекты сцены
+        _HelmWheel = GameObject.Find("HelmWheel").transform;                         // Штурвал
+        _ThrottleLever = GameObject.Find("ThrottleLever").transform;                 // Ручка газ-реверс
+        _SpeedText = GameObject.Find("SpeedText").GetComponent<Text>();              // Дисплей - скорость
+        _RudderAngleText = GameObject.Find("RudderAngleText").GetComponent<Text>();  // Дислей - положение руля
+        _TrackAngleText = GameObject.Find("TrackAngleText").GetComponent<Text>();    // Дисплей - курсовой угол
+
     }
 
     private void Update()
     {
         if (Input.GetKeyDown("up"))
             engineValue += 0.1f;
-        if (Input.GetKeyDown("down"))
+        else if (Input.GetKeyDown("down"))
             engineValue -= 0.1f;
+        if (Input.GetKeyDown("right"))
+            rudderValue += 1.0f;
+        else if (Input.GetKeyDown("left"))
+            rudderValue -= 1.0f;
 
         engineValue =  Mathf.Clamp(engineValue, -1.0f, 1.0f);
+        rudderValue = Mathf.Clamp(rudderValue, -35.0f, 35.0f);
+
+        // Повернуть ручку газ-реверс
+        Vector3 myVect = _ThrottleLever.localEulerAngles;
+        myVect.x = Mathf.Lerp(-50, 50, (engineValue + 1) / 2.0f);
+        _ThrottleLever.localEulerAngles = myVect;
+
+
+        // Повернуть штурвал
+        myVect = _HelmWheel.localEulerAngles;
+        myVect.z = - Mathf.Lerp(-540, 540, (rudderValue + 35) / 70.0f);  
+        //print(rudderValue + " " + ((rudderValue + 35) / 70.0f) + " " + myVect.z);
+        _HelmWheel.localEulerAngles = myVect;
+
+        // Вывести данные на дисплеи
+        _SpeedText.text = Mathf.Sqrt(Vz* Vz+ Vx* Vx).ToString("F2", CultureInfo.InvariantCulture);
+        _RudderAngleText.text = rudderValue.ToString("F0", CultureInfo.InvariantCulture);
+        _TrackAngleText.text = NormalizeAngle(transform.localEulerAngles.y).ToString("F0", CultureInfo.InvariantCulture);
+
     }
 
     void FixedUpdate()
@@ -96,15 +137,15 @@ public class YachtSolver : MonoBehaviour
         FresX = -Mathf.Sign(Vx) * _KresX * Vx * Vx;  
 
         // силы и момент на руле от движения яхты
-        FrudVzZ = -Mathf.Sign(Vz) * FruderZ(ruderlValue + Beta, Vz);
-        FrudVzX = -Mathf.Sign(ruderlValue + Beta) * Mathf.Sign(Vz) * FruderX(ruderlValue + Beta, Vz);
+        FrudVzZ = -Mathf.Sign(Vz) * FruderZ(rudderValue + Beta, Vz);
+        FrudVzX = -Mathf.Sign(rudderValue + Beta) * Mathf.Sign(Vz) * FruderX(rudderValue + Beta, Vz);
         MrudVzX =  -FrudVzX * Lbody / 2;
         // силы и момент на руле от работы винта - возникают только при кручении винта вперед
         if( Feng > 0 )
         {
             float VeffRud = Mathf.Sqrt(Feng / 440);
-            FrudEnZ = -FruderZ(ruderlValue , VeffRud);
-            FrudEnX = -Mathf.Sign(ruderlValue) * FruderX(ruderlValue, VeffRud);
+            FrudEnZ = -FruderZ(rudderValue, VeffRud);
+            FrudEnX = -Mathf.Sign(rudderValue) * FruderX(rudderValue, VeffRud);
             MrudEnX = -FrudEnX * Lbody / 2;
         }
         else
@@ -220,6 +261,20 @@ public class YachtSolver : MonoBehaviour
         }
         // учтем направление вращения винта
         return impact*DirectV;
+    }
+
+    // Приведем любой угол от к (-180/+180)
+    float NormalizeAngle(float myAngle)
+    {
+        while (myAngle > 180.0f)
+        {
+            myAngle -= 360.0f;
+        }
+        while (myAngle < -180.0f)
+        {
+            myAngle += 360.0f;
+        }
+        return myAngle;
     }
 
 
