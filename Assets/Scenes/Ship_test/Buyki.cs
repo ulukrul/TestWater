@@ -9,6 +9,7 @@ public class Buyki : MonoBehaviour
 
     void Start()
     {
+        print("Создаю буйки");
         GameObject allBuis = new GameObject();
         allBuis.name = "All Buis";
         Instantiate(allBuis, transform.parent);

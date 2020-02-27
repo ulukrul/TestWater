@@ -8,7 +8,7 @@ using System;
 // Лукомский Чугунов Системы управления МПО (2)
 // Гофман Маневрирование судна (3)
 
-public class YachtSolver : MonoBehaviour
+public class YachtSolver_old : MonoBehaviour
 {
     [Header("Управление:")]
     [Range(-1.0f,1.0f)]
@@ -26,8 +26,8 @@ public class YachtSolver : MonoBehaviour
     public float K11 = 0.3f;                // коеф. для расчета массы с учетом присоединенной Mzz = (1+K11)*M0
     public float K66 = 0.5f;                // коеф. для расчета массы и момента с учетом прис.  Jyy = (1+K66)*Jy; Mxx = (1+K66)*M0
     public float Krud = 0.19f;              // = 0.5*p*Sруля; Тогда сила на руле curFrud = Krud*V*V*KoefRud(curBeta,ruderlValue)
-    public float KFrudX = 0.3f;             // Подгонка, для реализма эффективности руля
-    public float KBeta = 1.0f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
+    public float KFrudX = 0.5f;             // Подгонка, для реализма эффективности руля
+    public float KBeta = 0.5f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
 
     // занос
     public int DirectV = 1;                 // направление вращения, +1 - правый винт, -1 - левый;
@@ -46,14 +46,10 @@ public class YachtSolver : MonoBehaviour
     public float Feng;                      // сила тяги, будет получатся из curEngineP делением на maxV (?)
     public float FresZ;                     // сила сопротивления корпуса продольная
     public float FresX;                     // сила сопротивления корпуса поперечная
-
-    public float FrudVzZ;                   // сила сопротивления руля от движения яхты относительно воды
-    public float FrudVzX;                   // боковая сила на руле от движения яхты относительно воды
-    public float MrudVzX;                    // Момент возникающий от силы FrudVzX на руле
-    public float FrudEnZ;                   // доп. сила сопротивления (от винта) из-за поворота руля 
-    public float FrudEnX;                   // боковая сила (от движения яхты) из-за поворота руля 
-    public float MrudEnX;                    // Момент возникающий от силы FrudEnX на руле
-
+    public float Frud;                      // сила на руле  Krud * V*V  * KoefRud( Beta, ruderlValue )
+    public float FrudZ;                     // доп. сила сопротивления из-за поворота руля 
+    public float FrudX;                     // боковая сила из-за поворота руля 
+    public float Mrud;                      // Момент возникающий на руле
     public float MresBody;                  // Момент сил сопротивления воды
     public float FengX;                     // боковая сила от винта, возникает при изменениях мощности
     public float MengX;                     // Момент от винта
@@ -95,26 +91,14 @@ public class YachtSolver : MonoBehaviour
         FresZ = -Mathf.Sign(Vz) * _KresZ * Vz * Vz;
         FresX = -Mathf.Sign(Vx) * _KresX * Vx * Vx;  
 
-        // силы и момент на руле от движения яхты
-        FrudVzZ = -Mathf.Sign(Vz) * FruderZ(ruderlValue + Beta, Vz);
-        FrudVzX = -Mathf.Sign(ruderlValue + Beta) * Mathf.Sign(Vz) * FruderX(ruderlValue + Beta, Vz);
-        MrudVzX =  -FrudVzX * Lbody / 2;
-        // силы и момент на руле от работы винта - возникают только при кручении винта вперед
-        if( Feng > 0 )
-        {
-            float VeffRud = Mathf.Sqrt(Feng / 440);
-            FrudEnZ = -FruderZ(ruderlValue , VeffRud);
-            FrudEnX = -Mathf.Sign(ruderlValue) * FruderX(ruderlValue, VeffRud);
-            MrudEnX = -FrudEnX * Lbody / 2;
-        }
-        else
-        {
-            FrudEnZ = FrudEnX = MrudEnX = 0.0f;
-
-        }
+        // силы и моменты на руле
+        FrudZ = -Mathf.Sign(Vz) * FruderZ(ruderlValue + Beta, Vz);
+        FrudX = -Mathf.Sign(ruderlValue + Beta) * Mathf.Sign(Vz) * FruderX(ruderlValue + Beta, Vz);
+        Mrud =  -FrudX * Lbody / 2;
 
         // Момент - сопротивление вращательному движению. Не по (1), а из физических соображений
         MresBody = -Mathf.Sign(OmegaY) *_KresX * (OmegaY * Lbody)* (OmegaY * Lbody) / 8;
+        //MresBody = _Mzz * OmegaY;
 
         // сила и момент от увеличения мощности двигателя
         float impactX = detectEngineImpact(FengOld, Feng);
@@ -124,15 +108,15 @@ public class YachtSolver : MonoBehaviour
 
         // Интегрируем dVz/dt - продольная скорость по Z
         float rotToVz = _Mxx * OmegaY * Vx;
-        float dVz = dt * (Feng + FresZ + FrudVzZ + FrudEnZ + rotToVz) / _Mzz;
+        float dVz = dt * (Feng + FresZ + FrudZ + rotToVz) / _Mzz;
 
         // Интегрируем dVx/dt - боковая скорость по X
         float rotToVx = -_Mzz * OmegaY * Vz;
-        float dVx = dt * (FrudVzX + FrudEnX + FresX + FengX + rotToVx) / _Mxx;
+        float dVx = dt * (FrudX + FresX + FengX + rotToVx) / _Mxx;
         //print("FrudX = " + FrudX + "   FresX = " + FresX + "   rotToVy = " + rotToVx + "   dVx = "+ dVx + "   Vx = "+Vx);
 
         // Интегрируем dOmegaY/dt - момент вокруг вертикальной оси Y
-        float dOmegaY = dt * (MrudVzX + MrudEnX + MresBody + MengX + (_Mzz - _Mxx) * Vx * Vz) / _Jyy;
+        float dOmegaY = dt * (Mrud + MresBody + MengX + (_Mzz - _Mxx) * Vx * Vz) / _Jyy;
 
         // Новые скорости
         Vz += dVz;
