@@ -1134,7 +1134,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   engineValue: 0
-  rudderValue: 0
+  steeringWheel: 0
   enginePower: 30000
   maxV: 4.1
   Ca: 0.97
@@ -1144,12 +1144,13 @@ MonoBehaviour:
   K11: 0.3
   K66: 0.5
   Krud: 0.19
-  KFrudX: 0.5
-  KBeta: 0.5
+  KFrudX: 0.3
+  KBeta: 1
   DirectV: 1
   Kzanos: 3
   Tzanos: 1.5
   Feng: 0
+  RuderValue: 0
   FresZ: 0
   FresX: 0
   FrudVzZ: 0
@@ -1158,6 +1159,7 @@ MonoBehaviour:
   FrudEnZ: 0
   FrudEnX: 0
   MrudEnX: 0
+  MrudResZ: 0
   MresBody: 0
   FengX: 0
   MengX: 0
