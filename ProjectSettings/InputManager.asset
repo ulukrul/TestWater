@@ -153,12 +153,12 @@ InputManager:
     m_Name: HorizontalJoy
     descriptiveName: 
     descriptiveNegativeName: 
-    negativeButton: 
-    positiveButton: 
-    altNegativeButton: left
-    altPositiveButton: right
+    negativeButton: left
+    positiveButton: right
+    altNegativeButton: a
+    altPositiveButton: d
     gravity: 0
-    dead: 0.19
+    dead: 0.01
     sensitivity: 1
     snap: 0
     invert: 0
