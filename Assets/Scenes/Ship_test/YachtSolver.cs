@@ -29,9 +29,9 @@ public class YachtSolver : MonoBehaviour
     public float Jy = 35000f;               // момент инерции относительно вертикальной оси
     public float K11 = 0.3f;                // коеф. для расчета массы с учетом присоединенной Mzz = (1+K11)*M0
     public float K66 = 0.5f;                // коеф. для расчета массы и момента с учетом прис.  Jyy = (1+K66)*Jy; Mxx = (1+K66)*M0
-    public float Krud = 0.19f;              // = 0.5*p*Sруля; Тогда сила на руле curFrud = Krud*V*V*KoefRud(curBeta,ruderValue)
-    public float KFrudX = 0.3f;             // Подгонка, для реализма эффективности руля
-    public float KBeta = 0.5f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
+    public float KFrudX = 0.5f;             // Подгонка, для реализма эффективности руля
+    public float KBeta = 0.7f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
+    public float KrudVzxContraEnx = 0.7f;   // Соотношение влияния руля в потоке воды и руля в потоке винта
 
     // занос кормы
     public int DirectV = 1;                 // направление вращения, +1 - правый винт, -1 - левый;
@@ -109,13 +109,13 @@ public class YachtSolver : MonoBehaviour
             engineValue -= 0.1f;
 
         if (_GameWheel)
-            steeringWheel = -Mathf.Lerp(-540.0f, 540.0f, (Input.GetAxis("HorizontalJoy") + 1.0f) / 2.0f);
+            steeringWheel = Mathf.Lerp(-540.0f, 540.0f, (Input.GetAxis("HorizontalJoy") + 1.0f) / 2.0f);
         else
         {
             if (Input.GetKeyDown("right"))
-                steeringWheel -= 1.0f;
-            else if (Input.GetKeyDown("left"))
                 steeringWheel += 1.0f;
+            else if (Input.GetKeyDown("left"))
+                steeringWheel -= 1.0f;
         }
 
         engineValue =  Mathf.Clamp(engineValue, -1.0f, 1.0f);
@@ -129,7 +129,7 @@ public class YachtSolver : MonoBehaviour
 
         // Повернуть штурвал
         myVect = _HelmWheel.localEulerAngles;
-        myVect.z = steeringWheel;
+        myVect.z = -steeringWheel;
         //myVect.z = - Mathf.Lerp(-540, 540, (steeringWheel + 35) / 70.0f);  
         _HelmWheel.localEulerAngles = myVect;
 
@@ -145,9 +145,9 @@ public class YachtSolver : MonoBehaviour
         float dt = Time.fixedDeltaTime;
 
         // поворот пера руля
-        RuderValue = steeringWheel * 35 / 540;
+        RuderValue = -steeringWheel * 35 / 540;
         // сила тяги
-        float FengOld = Feng; // для анализа, нужен ли занос кормы
+        float FengOld = Feng; // для анализа, нужен ли занос кормы от работы винта
         Feng = enginePower * engineValue / maxV; 
         
         // сила сопротивления корпуса
@@ -157,13 +157,17 @@ public class YachtSolver : MonoBehaviour
         // силы и момент на руле от движения яхты
         FrudVzZ = -Mathf.Sign(Vz) * FruderZ(RuderValue - Beta, Vz);
         FrudVzX = Mathf.Sign(RuderValue - Beta) * Mathf.Sign(Vz) * FruderX(RuderValue - Beta, Vz);
+        FrudVzX *= KrudVzxContraEnx;    // доля влияния руля в потоке воды
         MrudVzX =  -FrudVzX * Lbody / 2;
+        print("RuderValue = " + RuderValue + "   Beta = " + Beta + "   Итого = " + (RuderValue - Beta));
+
         // силы и момент на руле от работы винта - возникают только при кручении винта вперед
         if( Feng > 0 )
         {
             float VeffRud = Mathf.Sqrt(Feng / 440);
             FrudEnZ = -FruderZ(RuderValue, VeffRud);
             FrudEnX = Mathf.Sign(RuderValue) * FruderX(RuderValue, VeffRud);
+            FrudVzX *= (1-KrudVzxContraEnx);    // доля влияния руля в потоке винта
             MrudEnX = -FrudEnX * Lbody / 2;
         }
         else
@@ -172,7 +176,15 @@ public class YachtSolver : MonoBehaviour
 
         }
         // Момент на руле из-за сопротивления руля воде при наличии угла Beta
-        MrudResZ = (FrudVzZ + FrudEnZ) * Mathf.Sin(Mathf.PI * Beta / 180) * Lbody / 2;
+        if (Vz > 0)
+        { 
+            // сделал только при движении вперед, чтобы не попадать в штопор на заднем ходу
+            MrudResZ = -(FrudVzZ + FrudEnZ) * Mathf.Sin(Beta * Mathf.PI / 180) * Lbody / 2;
+        }
+        else
+        {
+            MrudResZ = 0;
+        }
 
         // Момент - сопротивление вращательному движению. Не по (1), а из физических соображений
         MresBody = -Mathf.Sign(OmegaY) * _KresOmega * (OmegaY * Lbody)* (OmegaY * Lbody) / 8;
