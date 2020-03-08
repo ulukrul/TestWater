@@ -30,7 +30,7 @@ public class YachtSolver : MonoBehaviour
     public float K11 = 0.3f;                // коеф. для расчета массы с учетом присоединенной Mzz = (1+K11)*M0
     public float K66 = 0.5f;                // коеф. для расчета массы и момента с учетом прис.  Jyy = (1+K66)*Jy; Mxx = (1+K66)*M0
     public float KFrudX = 0.5f;             // Подгонка, для реализма эффективности руля
-    public float KBeta = 0.7f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
+    public float KBeta = 0.2f;              // Чтобы уменьшить влияние Beta, так как руль обдувается водой винта (3 стр 55)
     public float KrudVzxContraEnx = 0.7f;   // Соотношение влияния руля в потоке воды и руля в потоке винта
     public float KwindF = 0.5f;             // Для подстройки влияния ветра на силу
     public float KwindM = 1.0f;             // Для подстройки влияния ветра на момент
@@ -72,13 +72,21 @@ public class YachtSolver : MonoBehaviour
     public float FwingZ;                    // сила ветра по Z
     public float Mwing;                     // момент от ветра
 
+    public float FropeX;                    // сила натяжения по X
+    public float FropeZ;                    // сила натяжения по Z
+    public float Mrope;                     // момент от натяжения 
+
+
     public float Vz = 0;                    // текущая продольная скорость
     public float Vx = 0;                    // боковая скорость
     public float OmegaY = 0;                // скорость поворота вокруг вертикальной оси
     public float Beta = 0;                  // угол между локальной осью OZ и скоростью
 
     // Ветер
-    private Wind wind;
+    private Wind _wind;
+
+    // канаты
+    private Cleat[] _cleats;
 
     // Объекты сцены
     Transform _HelmWheel;                   // Штурвал
@@ -93,7 +101,9 @@ public class YachtSolver : MonoBehaviour
     private void Awake()
     {
         GameObject windField = GameObject.Find("WindField");
-        wind = windField.GetComponent<Wind>();
+        _wind = windField.GetComponent<Wind>();
+
+        _cleats = GameObject.FindObjectsOfType<Cleat>();
     }
 
     void Start()
@@ -130,9 +140,9 @@ public class YachtSolver : MonoBehaviour
             steeringWheel = Mathf.Lerp(-540.0f, 540.0f, (Input.GetAxis("HorizontalJoy") + 1.0f) / 2.0f);
         else
         {
-            if (Input.GetKeyDown("right"))
+            if (Input.GetKey("right"))
                 steeringWheel += 1.0f;
-            else if (Input.GetKeyDown("left"))
+            else if (Input.GetKey("left"))
                 steeringWheel -= 1.0f;
         }
 
@@ -215,10 +225,10 @@ public class YachtSolver : MonoBehaviour
 
         // Влияние ветра:
         // в глобальной системе
-        float wZ = wind.WindDir[0].value * Mathf.Cos(wind.WindDir[0].angle * Mathf.PI / 180);
-        float wX = wind.WindDir[0].value * Mathf.Sin(wind.WindDir[0].angle * Mathf.PI / 180);
-        print("*************************");
-        print("wZ = " + wZ + "   wX = " + wX);
+        float wZ = _wind.WindDir[0].value * Mathf.Cos(_wind.WindDir[0].angle * Mathf.PI / 180);
+        float wX = _wind.WindDir[0].value * Mathf.Sin(_wind.WindDir[0].angle * Mathf.PI / 180);
+        //print("*************************");
+        //print("wZ = " + wZ + "   wX = " + wX);
         Vector3 wGlobal = new Vector3(wX, 0, wZ);
         // в локальной системе
         Vector3 wLocal = transform.InverseTransformVector(wGlobal);
@@ -226,30 +236,43 @@ public class YachtSolver : MonoBehaviour
         wLocal.z -= Vz;
         float wAngle = Vector3.Angle( Vector3.forward, wLocal ) * Mathf.Sign(wLocal.x);  // направление отсчитываем от носа
         wAngle = NormalizeAngle(wAngle);
-        print("Локально: " + wLocal + "   wAngle = " + wAngle);
+        //print("Локально: " + wLocal + "   wAngle = " + wAngle);
         float wValue = wLocal.magnitude;
         // получаем величину силы и момент от ветра
         float fWind = WindForce(wAngle, wValue);           // возвращается абс. величина силы!
-        print("fWind = " + fWind);
+        //print("fWind = " + fWind);
         Vector3 FwingVec = Vector3.Normalize(wLocal) * fWind;
         FwingX = FwingVec.x;
         FwingZ = FwingVec.z;
         Mwing = WindMoment(wAngle, wValue);
-        print("FwingZ = " + FwingZ + "   FwingX = " + FwingX + "   Mwing = " + Mwing);
+        //print("FwingZ = " + FwingZ + "   FwingX = " + FwingX + "   Mwing = " + Mwing);
+
+        // Натяжение канатов
+        FropeX = 0;
+        FropeZ = 0;                    
+        Mrope = 0;                     
+        for(int i=0; i< _cleats.Length; i++)
+        {
+            Vector3 localF = transform.InverseTransformDirection( _cleats[i].getForce() );
+            FropeX += localF.x;
+            FropeZ += localF.z;
+            Mrope += localF.x * (_cleats[i].transform.localPosition.z);
+            Mrope += -localF.z * (_cleats[i].transform.localPosition.x);
+        }
 
         // Численное интегрирование:
         // Интегрируем dVz/dt - продольная скорость по Z
         float rotToVz = _Mxx * OmegaY * Vx;
-        float dVz = dt * (Feng + FresZ + FrudVzZ + FrudEnZ + FwingZ + rotToVz) / _Mzz;
+        float dVz = dt * (Feng + FresZ + FrudVzZ + FrudEnZ + FwingZ + FropeZ + rotToVz) / _Mzz;
 
         // Интегрируем dVx/dt - боковая скорость по X
         float rotToVx = -_Mzz * OmegaY * Vz;
-        float dVx = dt * (FrudVzX + FrudEnX + FresX + FengX + FwingX + rotToVx) / _Mxx;
+        float dVx = dt * (FrudVzX + FrudEnX + FresX + FengX + FwingX + FropeX + rotToVx) / _Mxx;
         //print("FrudX = " + FrudX + "   FresX = " + FresX + "   rotToVy = " + rotToVx + "   dVx = "+ dVx + "   Vx = "+Vx);
 
         // Интегрируем dOmegaY/dt - момент вокруг вертикальной оси Y
         float vToRot = (_Mzz - _Mxx) * Vx * Vz;
-        float dOmegaY = dt * (MrudVzX + MrudEnX + MresBody + MengX + MrudResZ + Mwing + vToRot) / _Jyy;
+        float dOmegaY = dt * (MrudVzX + MrudEnX + MresBody + MengX + MrudResZ + Mwing + Mrope + vToRot) / _Jyy;
 
         // Новые скорости
         Vz += dVz;
