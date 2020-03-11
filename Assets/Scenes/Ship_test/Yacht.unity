@@ -1724,7 +1724,7 @@ PrefabInstance:
     - target: {fileID: 8346511314943932656, guid: be2e34bd346b24c40a71f98049cbeb93,
         type: 3}
       propertyPath: Ropes.Array.data[0].Pos.y
-      value: 1
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 8346511314943932656, guid: be2e34bd346b24c40a71f98049cbeb93,
         type: 3}

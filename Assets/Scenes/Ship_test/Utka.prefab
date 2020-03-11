@@ -140,6 +140,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a0fa1f771d14a5e4180c71fac53af680, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  Ropes: []
+  drawRope: 0
+  prefabVisualRope: {fileID: 547110942457638329, guid: e374e4cd18496dc459dac3071d597699,
+    type: 3}
 --- !u!1 &1953472559219691604
 GameObject:
   m_ObjectHideFlags: 0

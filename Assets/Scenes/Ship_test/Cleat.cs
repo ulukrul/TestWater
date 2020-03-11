@@ -9,6 +9,24 @@ public class Cleat : MonoBehaviour
     //public Rope[] Ropes;
     public List<Rope> Ropes;
     public bool drawRope = false;
+    public GameObject prefabVisualRope;
+
+    private List<GameObject> _visualRopes;
+
+    private void Start()
+    {
+        _visualRopes = new List<GameObject>();
+        // создать и нарисовать канаты
+        for (int i = 0; i < Ropes.Count; i++)
+        {
+            GameObject newRope = GameObject.Instantiate(prefabVisualRope);
+            newRope.transform.parent = transform;   // родитель - утка
+            newRope.transform.localPosition = Vector3.zero;
+            //Ropes[i].visualRope = newRope;
+            _visualRopes.Add(newRope);
+            drawOneRope(i);
+        }
+    }
 
     public Vector3 getForce()
     {
@@ -39,13 +57,29 @@ public class Cleat : MonoBehaviour
                 print("Канат лопнул! Утка " + gameObject.name + "   канат " + i);
                 numDel = i;
             }
+            drawOneRope(i);
         }
         // TODO! если несколько канатов от этой утки лопнули одновременно, надо делать по другому
         if(numDel != -1)
         {
             Ropes.RemoveAt(numDel);
+            Destroy(_visualRopes[numDel]);
+            _visualRopes.RemoveAt(numDel);
         }
+    }
 
+    private void drawOneRope(int i)
+    {
+        Rope r = Ropes[i];
+        LineRenderer lr = _visualRopes[i].GetComponent<LineRenderer>();
+        Vector3[] points = new Vector3[2];
+        points[0] = transform.position;
+        points[1] = r.Pos;
+        lr.positionCount = 2;
+        lr.SetPositions(points);
+        Color col = detectRopeColor(r);
+        lr.startColor = col;
+        lr.endColor = col;
     }
 
     // отладочное рисование каната в виде линии
@@ -55,30 +89,36 @@ public class Cleat : MonoBehaviour
         {
             for (int i = 0; i < Ropes.Count; i++)
             {
-                float curDist = Vector3.Distance(transform.position, Ropes[i].Pos);
-                Color col = Color.black;
-                if ( curDist < Ropes[i].Len )      
-                {
-                    // канат не натянут
-                    col = Color.black;
-                }
-                else if(curDist < Ropes[i].Len * Ropes[i].Stretch)
-                {
-                    // растяжение в допустимых пределах 
-                    float blueAdd = 0;
-                    float maxL = Ropes[i].Len * Ropes[i].Stretch;
-                    blueAdd = (curDist - Ropes[i].Len) / (maxL - Ropes[i].Len)*0.5f;
-                    col = new Color(0.5f, 0.5f + blueAdd, 0.5f);
-                }
-                else
-                {
-                    // превышено максимальное растяжение
-                    col = new Color(1.0f, 0.5f, 0.5f);
-                }
+                Color col = detectRopeColor(Ropes[i]);
                 Gizmos.color = col;
                 Gizmos.DrawLine(transform.position, Ropes[i].Pos);
             }
         }
+    }
+
+    private Color detectRopeColor(Rope r)
+    {
+        float curDist = Vector3.Distance(transform.position, r.Pos);
+        Color col = Color.black;
+        if (curDist < r.Len)
+        {
+            // канат не натянут
+            col = Color.black;
+        }
+        else if (curDist < r.Len * r.Stretch)
+        {
+            // растяжение в допустимых пределах 
+            float blueAdd = 0;
+            float maxL = r.Len * r.Stretch;
+            blueAdd = (curDist - r.Len) / (maxL - r.Len) * 0.5f;
+            col = new Color(0.5f, 0.5f + blueAdd, 0.5f);
+        }
+        else
+        {
+            // превышено максимальное растяжение
+            col = new Color(1.0f, 0.5f, 0.5f);
+        }
+        return col;
     }
 }
 
@@ -91,5 +131,7 @@ public struct Rope
     public float Len;
     public float Stretch;
     public float MaxForce;
+    public GameObject visualRope;
+    //internal LineRenderer lr;
 }
 
