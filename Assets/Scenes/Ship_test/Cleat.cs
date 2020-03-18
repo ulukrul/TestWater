@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System;
-
+using Obi;
 
 public class Cleat : MonoBehaviour
 {
@@ -10,6 +10,7 @@ public class Cleat : MonoBehaviour
     public List<Rope> Ropes;
     public bool drawRope = false;
     public GameObject prefabVisualRope;
+    public ObiRope obiRope;
 
     private List<GameObject> _visualRopes;
 
@@ -65,6 +66,12 @@ public class Cleat : MonoBehaviour
             Ropes.RemoveAt(numDel);
             Destroy(_visualRopes[numDel]);
             _visualRopes.RemoveAt(numDel);
+
+            if ( obiRope != null && obiRope.isLoaded)
+            {
+                print("Удаляем Rope");
+                obiRope.gameObject.SetActive(false);
+            }
         }
     }
 
