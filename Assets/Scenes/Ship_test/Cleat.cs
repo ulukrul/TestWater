@@ -1,108 +1,175 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using System;
 using Obi;
 
 public class Cleat : MonoBehaviour
 {
-    //public Rope[] Ropes;
+    // список канатов
     public List<Rope> Ropes;
-    public bool drawRope = false;
-    public GameObject prefabVisualRope;
-    public ObiRope obiRope;
 
-    private List<GameObject> _visualRopes;
+    // рисовать ли канат с помощью гизмо
+    public bool drawRope = false;
+
+    // сумма сил на этой утке
+    public Vector3 summF = Vector3.zero;
+
+    // коллайдеры объектов, принадлежащих яхте
+    [NonSerialized]
+    public Collider[] yachtCols;
 
     private void Start()
     {
-        _visualRopes = new List<GameObject>();
-        // создать и нарисовать канаты
         for (int i = 0; i < Ropes.Count; i++)
         {
-            GameObject newRope = GameObject.Instantiate(prefabVisualRope);
-            newRope.transform.parent = transform;   // родитель - утка
-            newRope.transform.localPosition = Vector3.zero;
-            //Ropes[i].visualRope = newRope;
-            _visualRopes.Add(newRope);
-            drawOneRope(i);
+            Ropes[i].actCol = new List<ActiveCollider>();
         }
+
+    }
+
+    public void SolveAllRopes()
+    {
+        summF = Vector3.zero;
+
+        //print("Утка " + name);
+
+        // по всем канатам этой утки:
+        for (int i = 0; i < Ropes.Count; i++)
+        {
+            if (!Ropes[i].obiRope.isActiveAndEnabled) continue;
+
+            Vector3 direct = Vector3.zero;          // направление силы на одном канате
+            float valueF = 0;                       // величина силы на одном канате
+            float curDist = 0;                      // от утки до точки закрепления с учетом изгибов
+
+            // сортируем точки коллайдинга
+            var sortedCol = from c in Ropes[i].actCol orderby c.idxInAct select c;
+            List<ActiveCollider> sortCol = new List<ActiveCollider>(sortedCol);
+
+            // вычислим текущую длинну каната - она состоит из длинн отрезков 
+            if(sortCol.Count == 0)
+            {
+                curDist = Vector3.Distance(transform.position, Ropes[i].Pos);
+            }
+            else
+            {
+                curDist = Vector3.Distance(transform.position, sortCol[0].pos);
+                for(int j=0; j < sortCol.Count-1; j++)
+                {
+                    curDist += Vector3.Distance(sortCol[j].pos, sortCol[j+1].pos);
+                }
+                curDist += Vector3.Distance(sortCol[sortCol.Count - 1].pos, Ropes[i].Pos);
+            }
+
+            foreach (ActiveCollider ac in sortCol)
+            {
+                print(ac.actor.name + "  " + ac.idxInAct + "  " + ac.pos + "  " + ac.col.name + "  curDist = " + curDist);
+            }
+
+            direct = Vector3.zero;
+            // проверка, не лопнул ли канат
+            if (curDist / Ropes[i].Len > Ropes[i].Stretch)
+            {
+                print("Канат лопнул! Утка " + gameObject.name + "   канат " + i);
+                Ropes[i].obiRope.gameObject.SetActive(false);
+            }
+            else
+            {
+                // если не лопнул, считаем силу на этом канате
+                valueF=0;
+                if (curDist > Ropes[i].Len) // имеется натяжение?
+                {
+                    valueF = (curDist / Ropes[i].Len - 1) / (Ropes[i].Stretch - 1) * Ropes[i].MaxForce;
+
+
+                    // определяем направление силы
+                    if (sortCol.Count == 0)
+                    {
+                        // если нет коллайдеров на канате, направление - от утки к точке закрепления
+                        direct = (Ropes[i].Pos - transform.position).normalized;
+                    }
+                    else
+                    {
+                        // если еть коллайдеры на канате, надо найти первый коллайдер не принадлежащий яхте (временно!)
+                        ActiveCollider ac = null;
+                        for (int j = 0; j < sortCol.Count; j++)
+                        {
+                            if (FindExternalCol(sortCol[j]))
+                            {
+                                ac = sortCol[j];
+                                break;
+                            }
+                        }
+                        if (ac == null)
+                        {
+                            // если коллайдеры только с корпусом яхты, направление - от утки к точке закрепления (временно!)
+                            direct = (Ropes[i].Pos - transform.position).normalized;
+                        }
+                        else
+                        {
+                            direct = (ac.pos - transform.position).normalized;
+                        }
+                    }
+                }
+            }
+            Ropes[i].curForce = direct * valueF;
+            summF += Ropes[i].curForce;
+        }
+       
+    }
+
+    // проверить, что ac контактирует с внешним коллайдером
+    private bool FindExternalCol(ActiveCollider ac)
+    {
+        for(int i=0; i < yachtCols.Length; i++)
+        {
+            if(ac.col == yachtCols[i])
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     public Vector3 getForce()
     {
-        Vector3 summF = Vector3.zero;
-
-        for (int i = 0; i < Ropes.Count; i++)
-        {
-            float curDist = Vector3.Distance(transform.position, Ropes[i].Pos);
-            if (curDist > Ropes[i].Len && curDist < Ropes[i].Len * Ropes[i].Stretch )
-            {
-                float valueF = (curDist / Ropes[i].Len - 1) / (Ropes[i].Stretch - 1) * Ropes[i].MaxForce; ;
-                Vector3 oneF = (Ropes[i].Pos - transform.position).normalized * valueF;
-                summF += oneF;
-            }
-        }
         return summF;
     }
 
-    void FixedUpdate()
-    {
-        int numDel=-1;
-        // анализ натяжения канатов
-        for (int i = 0; i < Ropes.Count; i++)
-        {
-            float curDist = Vector3.Distance(transform.position, Ropes[i].Pos);
-            if (curDist / Ropes[i].Len > Ropes[i].Stretch)
-            {
-                print("Канат лопнул! Утка " + gameObject.name + "   канат " + i);
-                numDel = i;
-            }
-            drawOneRope(i);
-        }
-        // TODO! если несколько канатов от этой утки лопнули одновременно, надо делать по другому
-        if(numDel != -1)
-        {
-            Ropes.RemoveAt(numDel);
-            Destroy(_visualRopes[numDel]);
-            _visualRopes.RemoveAt(numDel);
 
-            if ( obiRope != null && obiRope.isLoaded)
-            {
-                print("Удаляем Rope");
-                obiRope.gameObject.SetActive(false);
-            }
-        }
-    }
-
-    private void drawOneRope(int i)
-    {
-        Rope r = Ropes[i];
-        LineRenderer lr = _visualRopes[i].GetComponent<LineRenderer>();
-        Vector3[] points = new Vector3[2];
-        points[0] = transform.position;
-        points[1] = r.Pos;
-        lr.positionCount = 2;
-        lr.SetPositions(points);
-        Color col = detectRopeColor(r);
-        lr.startColor = col;
-        lr.endColor = col;
-    }
 
     // отладочное рисование каната в виде линии
     private void OnDrawGizmos()
     {
+        if (Ropes == null) return;
+        
         if (drawRope)
         {
             for (int i = 0; i < Ropes.Count; i++)
             {
-                Color col = detectRopeColor(Ropes[i]);
-                Gizmos.color = col;
-                Gizmos.DrawLine(transform.position, Ropes[i].Pos);
+                Gizmos.color = detectRopeColor(Ropes[i]);
+                if (Ropes[i].actCol == null) return;
+                if(Ropes[i].actCol.Count == 0)
+                {
+                    Gizmos.DrawLine(transform.position, Ropes[i].Pos);
+                }
+                else
+                {
+                    Gizmos.DrawLine(transform.position, Ropes[i].actCol[0].pos);
+                    for (int j = 1; j < Ropes[i].actCol.Count; j++)
+                    {
+                        Gizmos.DrawLine(Ropes[i].actCol[j-1].pos, Ropes[i].actCol[j].pos);
+                    }
+                    Gizmos.DrawLine(Ropes[i].actCol[Ropes[i].actCol.Count-1].pos, Ropes[i].Pos);
+                }
+
             }
         }
     }
 
+    // определение цвета для рисования гизмо
     private Color detectRopeColor(Rope r)
     {
         float curDist = Vector3.Distance(transform.position, r.Pos);
@@ -116,8 +183,8 @@ public class Cleat : MonoBehaviour
         {
             // растяжение в допустимых пределах 
             float blueAdd = 0;
-            float maxL = r.Len * r.Stretch;
-            blueAdd = (curDist - r.Len) / (maxL - r.Len) * 0.5f;
+            
+            blueAdd = r.curForce.magnitude/r.MaxForce * 0.5f;
             col = new Color(0.5f, 0.5f + blueAdd, 0.5f);
         }
         else
@@ -132,13 +199,19 @@ public class Cleat : MonoBehaviour
 
 
 [Serializable]
-public struct Rope
+public class Rope
 {
     public Vector3 Pos;
+    // столкновения, зафиксированные на этом канате, передается из DetectCol
+    [NonSerialized]
+    public List<ActiveCollider> actCol;
     public float Len;
     public float Stretch;
     public float MaxForce;
-    public GameObject visualRope;
-    //internal LineRenderer lr;
+    // Канат привязанный к утке (непонятно, как учесть, что это могут быть два конца одного каната)
+    public ObiRope obiRope;
+
+    [NonSerialized]
+    public Vector3 curForce;
 }
 
